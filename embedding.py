@@ -2,6 +2,62 @@ from langchain_huggingface import HuggingFaceEmbeddings
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
+import jq
+import json
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, Union
+
+from langchain_core.documents import Document
+
+from langchain_community.document_loaders.base import BaseLoader
+
+class CustomJSONLoader(BaseLoader):
+    """Load a `JSON` file using a `jq` schema.
+
+    """
+
+    def __init__(
+            self,
+            file_path: Union[str, Path],
+            jq_schema: str,
+    ):
+        """Initialize the JSONLoader.
+
+        参数:
+            file_path (Union[str, Path]): JSON 或 JSON Lines 文件的路径。
+            jq_schema (str): 用来从 JSON 中提取数据或文本的 jq 模式。
+
+        """
+
+        self.file_path = Path(file_path).resolve()
+        self._jq_schema = jq.compile(jq_schema)
+
+    def load(self) -> List[Document]:
+        """从 JSON 文件中加载并返回文档。"""
+        docs: List[Document] = []
+        self._parse(self.file_path.read_text(encoding="utf-8"), docs)
+        return docs
+
+    def _parse(self, content: str, docs: List[Document]) -> None:
+        """将给定内容转换为文档。"""
+        # content : 原始的JSON
+        # json.loads(content)：JSON 格式的字符串 content 转换为 Python 的数据结构。具体转换为哪种形式的数据结构取决于原始 JSON 字符串的内容：
+
+        # 根据jq编译查找到的结果
+        data = self._jq_schema.input(json.loads(content)).all()
+
+        for i, sample in enumerate(data, len(docs) + 1):
+            metadata = {"result": "\n".join(sample), "source": self.file_path}
+            docs.append(Document(page_content="\n".join(sample), metadata=metadata))
+
+loader = CustomJSONLoader(
+    file_path='./data/cn_test_set.json',
+    jq_schema='."Session-3"."对话历史"',)
+
+data = loader.load()
+
+pprint(data)
+
 # # 本地加载
 # model = SentenceTransformer('./model')
 query = "早睡早起到底是不是保持身体健康的标准？"
